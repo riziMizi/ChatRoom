@@ -2,6 +2,7 @@ import sqlite3
 import socket
 import threading
 import re
+from mail import sendEmail
 
 
 ip =socket.gethostbyname(socket.gethostname())
@@ -13,7 +14,7 @@ server.listen(20)
 korisnici = {}
 
 def addUser(username, password, email):
-    conn = sqlite3.connect('users.db')
+    conn = sqlite3.connect('chatroom.db')
     c = conn.cursor()
 
     sql = "INSERT INTO user (username, password, email) VALUES (?, ?, ?);"
@@ -24,7 +25,7 @@ def addUser(username, password, email):
     conn.close()
 
 def getUser(username, password):
-    conn = sqlite3.connect('users.db')
+    conn = sqlite3.connect('chatroom.db')
     c = conn.cursor()
 
     sql = "SELECT * FROM user WHERE username = ? AND password = ?"
@@ -37,7 +38,7 @@ def getUser(username, password):
     return item
 
 def checkUsername(username):
-    conn = sqlite3.connect('users.db')
+    conn = sqlite3.connect('chatroom.db')
     c = conn.cursor()
 
     sql = "SELECT * FROM user WHERE username = ?"
@@ -50,7 +51,7 @@ def checkUsername(username):
     return item
 
 def addMessage(username, msg):
-    conn = sqlite3.connect('users.db')
+    conn = sqlite3.connect('chatroom.db')
     c = conn.cursor()
 
     sql = "INSERT INTO poraki (username, poraka) VALUES (?, ?);"
@@ -74,29 +75,65 @@ def broadcast(msg):
 
 def opsluzhiKorisnik(client):
     while True:
-        try:
-            msg = client.recv(1024).decode("utf-8")
-            proverkaOdjava = msg.split(":")
-            if proverkaOdjava[1].strip() == 'logout':
+        data = client.recv(1024).decode("utf-8")
+        poraka = data.split("|")
+        tip = poraka[0]
+
+        if tip == "login":
+            username = poraka[1]
+            if username in korisnici:
+                client.send(bytes("You are already logged in to the server!\n", "utf-8"))
+            else:
+                password = poraka[2]
+                item = getUser(username, password)
+                if item == None:
+                    client.send(bytes("Wrong username or password. Please try again!\n", "utf-8"))
+                else:
+                    korisnici[username] = client
+                    broadcast(f"{username} is now online!")
+                    print(f"{username} is now online!\n")
+                    ispratiSitePoraki(client)
+
+        elif tip == "register":
+            username = poraka[1]
+            password = poraka[2]
+            email = poraka[3]
+            item = checkUsername(username)
+
+            if item == None:
+                if checkEmail(email):
+                    addUser(username, password, email)
+                    client.send(bytes("You have successfully registered in Chat Room!!\n", "utf-8"))
+                    sendEmail(email, "Registering in Chat Room!", f"Hello {username}. You have successfully registered in Chat Room!")
+                else:
+                    client.send(bytes("You entered an invalid email address. Please try again!\n", "utf-8"))
+            else:
+                client.send(bytes(f"Username {username} is already taken!\n", "utf-8"))
+
+
+        elif tip == "send":
+            try:
+                proverkaOdjava = poraka[1].split(":")
+                if proverkaOdjava[1].strip() == 'logout':
+                    user = list(korisnici.keys())[list(korisnici.values()).index(client)]
+                    del korisnici[user]
+                    client.close()
+                    odjava = f"{user} is now offline!"
+                    print(odjava)
+                    broadcast(odjava)
+                    break
+
+                broadcast(poraka[1])
+                addMessage(proverkaOdjava[0], proverkaOdjava[1])
+            except:
                 user = list(korisnici.keys())[list(korisnici.values()).index(client)]
                 del korisnici[user]
                 client.close()
-                odjava = "Se odjavi " + user
-                print(odjava)
-                broadcast(odjava)
                 break
-
-            broadcast(msg)
-            addMessage(proverkaOdjava[0], proverkaOdjava[1])
-        except:
-            user = list(korisnici.keys())[list(korisnici.values()).index(client)]
-            del korisnici[user]
-            client.close()
-            break
 
 
 def ispratiSitePoraki(client):
-    conn = sqlite3.connect('users.db')
+    conn = sqlite3.connect('chatroom.db')
     c = conn.cursor()
 
     sql = "SELECT * FROM poraki"
@@ -112,43 +149,7 @@ def ispratiSitePoraki(client):
 def main():
     while True:
         client, addr = server.accept()
-        data =client.recv(1024).decode("utf-8")
-        poraka = data.split("|")
-        tip = poraka[0]
-
-        if tip == "login":
-            username = poraka[1]
-            if username in korisnici:
-                client.send(bytes("Veke ste najaveni na serverot!", "utf-8"))
-            else:
-                password = poraka[2]
-                item = getUser(username, password)
-
-                if item == None:
-                    client.send(bytes("Pogresen username ili password.Obidete se povtorno!", "utf-8"))
-                else:
-                    korisnici[username] = client
-                    broadcast("Se najavi " + username)
-                    print("Se najavi " + username)
-
-                    ispratiSitePoraki(client)
-                    threading.Thread(target=opsluzhiKorisnik, args=(client,)).start()
-
-        elif tip == "register":
-            username = poraka[1]
-            password = poraka[2]
-            email = poraka[3]
-            item = checkUsername(username)
-
-            if item == None:
-                if checkEmail(email):
-                    addUser(username, password, email)
-
-                    client.send(bytes("Uspesno se registriravte vo Chat Room!", "utf-8"))
-                else:
-                    client.send(bytes("Vnesovte nevalidna email adresa.Ve molime obidete se povtorno", "utf-8"))
-            else:
-                client.send(bytes("Vnesovte postoecki username.Ve molime obidete se povtorno!", "utf-8"))
+        threading.Thread(target=opsluzhiKorisnik, args=(client,)).start()
 
 
 main()

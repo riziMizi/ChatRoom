@@ -1,5 +1,4 @@
 import socket
-import sqlite3
 import sys
 import threading
 
@@ -10,6 +9,7 @@ client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client.connect((ip, port))
 
 najaven = 0
+username = ""
 
 def citajPoraki():
     while True:
@@ -23,42 +23,47 @@ def citajPoraki():
 def pishuvajPoraki(username):
     while True:
         msg = input("")
-        client.send(bytes(username + ": " + msg, "utf-8"))
+        client.send(bytes("send|" + username + ": " + msg, "utf-8"))
 
         if msg == 'logout':
             client.close()
             sys.exit()
 
-while True:
-    komanda = input("Dobredojdovte vo Chat room.\nZa najava: login\n"
-                    "Za odjavuvanje: logout\nZa registriranje: register\nZa da isklucite: exit\n")
+def main():
+    while True:
+        global username
+        global najaven
 
-    if komanda == "login":
-        username = input("Vnesete username\n")
-        password = input("Vnesete password\n")
+        komanda = input("Welcome to Chat Room.\nFor logging in: login\n"
+                        "For logging out: logout\nFor registration: register\nExit: exit\n")
 
-        client.send(bytes("login|"+username+"|"+password, "utf-8"))
-        porakaNajava = client.recv(1024).decode("utf-8")
-        print(porakaNajava + "\n")
+        if komanda == "login":
+            username = input("Enter username:\n")
+            password = input("Enter password:\n")
 
-        if porakaNajava == "Se najavi " + username:
-            najaven = 1
-            break
+            client.send(bytes("login|" + username + "|" + password, "utf-8"))
+            porakaNajava = client.recv(1024).decode("utf-8")
+            print(porakaNajava + "\n")
 
-    elif komanda == "register":
-       username = input("Vnesete username\n")
-       password = input("Vnesete password\n")
-       email = input("Vnesete email\n")
-       client.send(bytes("register|" + username + "|" + password + "|" + email, "utf-8"))
-       print(client.recv(1024).decode("utf-8"))
+            if porakaNajava == f"{username} is now online!":
+                print(f"Welcome {username} in Chat Room!\n")
+                najaven = 1
+                break
 
-    elif komanda == "exit":
-        exit()
-    else:
-        print("Vnesovte pogresna komanda!!!\n")
+        elif komanda == "register":
+           username = input("Enter username:\n")
+           password = input("Enter password:\n")
+           email = input("Enter email:\n")
+           client.send(bytes("register|" + username + "|" + password + "|" + email, "utf-8"))
+           print(client.recv(1024).decode("utf-8"))
+
+        elif komanda == "exit":
+            exit()
+        else:
+            print("Invalid command!!!\n")
 
 
-
+main()
 if najaven == 1:
     threading.Thread(target=citajPoraki).start()
     threading.Thread(target=pishuvajPoraki, args=(username,)).start()
